@@ -1,0 +1,4 @@
+string environment_id
+HumanNaviObjectInfo[] objects_info
+HumanNaviObjectInfo target_object
+geometry_msgs/Point destination
