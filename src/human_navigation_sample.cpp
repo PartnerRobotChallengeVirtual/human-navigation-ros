@@ -19,6 +19,14 @@ private:
 		TaskFinished
 	};
 
+	enum SpeechState
+	{
+		None,
+		WaitingState,
+		Speaking,
+		Speakable
+	};
+
 	const std::string MSG_ARE_YOU_READY    = "Are_you_ready?";
 	const std::string MSG_TASK_SUCCEEDED   = "Task_succeeded";
 	const std::string MSG_TASK_FAILED      = "Task_failed";
@@ -26,18 +34,23 @@ private:
 	const std::string MSG_GO_TO_NEXT_TRIAL = "Go_to_next_trial";
 	const std::string MSG_MISSION_COMPLETE = "Mission_complete";
 	const std::string MSG_REQUEST          = "Guidance_request";
+	const std::string MSG_SPEECH_STATE     = "Speech_state";
 
 	const std::string MSG_I_AM_READY           = "I_am_ready";
 	const std::string MSG_GET_AVATAR_POSE      = "Get_avatar_pose";
 	const std::string MSG_GET_OBJECT_POSITIONS = "Get_object_positions";
+	const std::string MSG_CONFIRM_SPEECH_STATE = "Confirm_speech_state";
 
 	int step;
+	int speechState;
 
 	bool isStarted;
 	bool isFinished;
 
 	bool isTaskInfoReceived;
 	bool isRequestReceived;
+
+	ros::Time timePrevSpeechStateConfirmed;
 
 	bool isSentGetAvatarPose;
 
@@ -49,6 +62,7 @@ private:
 	void init()
 	{
 		step = Initialize;
+		speechState = None;
 
 		reset();
 	}
@@ -117,6 +131,17 @@ private:
 		{
 			exit(EXIT_SUCCESS);
 		}
+		else if(message->message==MSG_SPEECH_STATE)
+		{
+			if(message->detail=="Is_speaking")
+			{
+				speechState = Speaking;
+			}
+			else
+			{
+				speechState = Speakable;
+			}
+		}
 	}
 
 	// receive taskInfo from the moderator (Unity)
@@ -152,6 +177,27 @@ private:
 			"rightHand: " << std::endl << avatarPose.right_hand
 		);
 		isSentGetAvatarPose = false;
+	}
+
+	bool speakGuidanceMessage(ros::Publisher pubHumanNaviMsg, ros::Publisher pubStringMsg, std::string message, int interval = 1)
+	{
+		if(speechState == Speakable)
+		{
+			sendStringMessage(pubStringMsg, message);
+			speechState = None;
+			return true;
+		}
+		else if(speechState == None || speechState == Speaking)
+		{
+			if(timePrevSpeechStateConfirmed.sec + interval < ros::Time::now().sec)
+			{
+				sendMessage(pubHumanNaviMsg, MSG_CONFIRM_SPEECH_STATE);
+				timePrevSpeechStateConfirmed = ros::Time::now();
+				speechState = WaitingState;
+			}
+		}
+
+		return false;
 	}
 
 public:
@@ -234,19 +280,21 @@ public:
 
 					guideMsg = "Please take " + targetObjectName + locationName;
 
-					sendStringMessage(pubStringMsg, guideMsg);
-
-					time = ros::Time::now();
-
-					step++;
+					if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+					{
+						time = ros::Time::now();
+						step++;
+					}
 					break;
 				}
 				case GuideForPlacement:
 				{
 					if(isRequestReceived)
 					{
-						sendStringMessage(pubStringMsg, guideMsg);
-						isRequestReceived = false;
+						if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+						{
+							isRequestReceived = false;
+						}
 					}
 
 					int WaitTime = 5;
@@ -262,10 +310,12 @@ public:
 							destinationName = "the second cabinet from the right.";
 						}
 						guideMsg = "Put it in " + destinationName;
-						sendStringMessage(pubStringMsg, guideMsg);
-						time = ros::Time::now();
 
-						step++;
+						if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+						{
+							time = ros::Time::now();
+							step++;
+						}
 					}
 
 					break;
@@ -281,19 +331,23 @@ public:
 
 					if(isRequestReceived)
 					{
+						bool isSpeaked;
 						if(ros::Time::now().sec % 2 > 0)
 						{
-							sendStringMessage(pubStringMsg, guideMsg);
+							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg);
 						}
 						else
 						{
-							sendStringMessage(pubStringMsg, "You can find the cabinet above the kitchen sink.");
+							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, "You can find the cabinet above the kitchen sink.");
 						}
-						
-						isRequestReceived = false;
+
+						if(isSpeaked)
+						{
+							isRequestReceived = false;
+						}
 					}
 
-					int WaitTime = 5;
+					int WaitTime = 10;
 					if(time.sec + WaitTime < ros::Time::now().sec && !isSentGetAvatarPose)
 					{
 						sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_POSE);
