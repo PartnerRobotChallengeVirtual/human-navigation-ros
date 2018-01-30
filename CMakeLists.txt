@@ -56,6 +56,7 @@ add_message_files(
   HumanNaviObjectInfo.msg
   HumanNaviTaskInfo.msg
   HumanNaviMsg.msg
+  HumanNaviAvatarPose.msg
 )
 
 ## Generate services in the 'srv' folder

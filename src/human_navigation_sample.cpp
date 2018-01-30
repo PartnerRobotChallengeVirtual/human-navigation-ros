@@ -3,6 +3,7 @@
 #include <human_navigation/HumanNaviObjectInfo.h>
 #include <human_navigation/HumanNaviTaskInfo.h>
 #include <human_navigation/HumanNaviMsg.h>
+#include <human_navigation/HumanNaviAvatarPose.h>
 
 class HumanNavigationSample
 {
@@ -24,10 +25,11 @@ private:
 	const std::string MSG_TASK_FINISHED    = "Task_finished";
 	const std::string MSG_GO_TO_NEXT_TRIAL = "Go_to_next_trial";
 	const std::string MSG_MISSION_COMPLETE = "Mission_complete";
+	const std::string MSG_REQUEST          = "Guidance_request";
 
-	const std::string MSG_I_AM_READY     = "I_am_ready";
-	const std::string MSG_SPEAK          = "Speak";
-	const std::string MSG_REQUEST        = "Guidance_request";
+	const std::string MSG_I_AM_READY           = "I_am_ready";
+	const std::string MSG_GET_AVATAR_POSE      = "Get_avatar_pose";
+	const std::string MSG_GET_OBJECT_POSITIONS = "Get_object_positions";
 
 	int step;
 
@@ -37,8 +39,12 @@ private:
 	bool isTaskInfoReceived;
 	bool isRequestReceived;
 
+	bool isSentGetAvatarPose;
+
 	human_navigation::HumanNaviTaskInfo taskInfo;
 	std::string guideMsg;
+
+	human_navigation::HumanNaviAvatarPose avatarPose;
 
 	void init()
 	{
@@ -49,10 +55,11 @@ private:
 
 	void reset()
 	{
-		isStarted          = false;
-		isFinished         = false;
-		isTaskInfoReceived = false;
-		isRequestReceived  = false;
+		isStarted           = false;
+		isFinished          = false;
+		isTaskInfoReceived  = false;
+		isRequestReceived   = false;
+		isSentGetAvatarPose = false;
 	}
 
 	// send humanNaviMsg to the moderator (Unity)
@@ -110,7 +117,6 @@ private:
 		{
 			exit(EXIT_SUCCESS);
 		}
-
 	}
 
 	// receive taskInfo from the moderator (Unity)
@@ -136,6 +142,18 @@ private:
 		isTaskInfoReceived = true;
 	}
 
+	void avatarPoseMessageCallback(const human_navigation::HumanNaviAvatarPose::ConstPtr& message)
+	{
+		avatarPose = *message;
+
+		ROS_INFO_STREAM(
+			"Head: " << std::endl << avatarPose.head << 
+			"LeftHand: " << std::endl << avatarPose.left_hand << 
+			"rightHand: " << std::endl << avatarPose.right_hand
+		);
+		isSentGetAvatarPose = false;
+	}
+
 public:
 	int run(int argc, char **argv)
 	{
@@ -151,6 +169,7 @@ public:
 
 		ros::Subscriber subHumanNaviMsg = nodeHandle.subscribe<human_navigation::HumanNaviMsg>("/human_navigation/message/to_robot", 100, &HumanNavigationSample::messageCallback, this);
 		ros::Subscriber subTaskInfoMsg = nodeHandle.subscribe<human_navigation::HumanNaviTaskInfo>("/human_navigation/message/task_info", 1, &HumanNavigationSample::taskInfoMessageCallback, this);
+		ros::Subscriber subAvatarPoseMsg = nodeHandle.subscribe<human_navigation::HumanNaviAvatarPose>("/human_navigation/message/avatar_pose", 1, &HumanNavigationSample::avatarPoseMessageCallback, this);
 		ros::Publisher pubHumanNaviMsg = nodeHandle.advertise<human_navigation::HumanNaviMsg>("/human_navigation/message/to_moderator", 10);
 		ros::Publisher pubStringMsg  = nodeHandle.advertise<std_msgs::String>("/human_navigation/message/guidance_message", 10);
 
@@ -272,6 +291,15 @@ public:
 						}
 						
 						isRequestReceived = false;
+					}
+
+					int WaitTime = 5;
+					if(time.sec + WaitTime < ros::Time::now().sec && !isSentGetAvatarPose)
+					{
+						sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_POSE);
+
+						time = ros::Time::now();
+						isSentGetAvatarPose = true;
 					}
 
 					break;
