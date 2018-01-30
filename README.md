@@ -1,6 +1,6 @@
 # ROS Package for Human Navigation
 
-This project is ROS package for the competition of Human Navigation.
+This project is ROS package for the Human Navigation task of the Partner Robot Challenge (Virtual Space) in the World Robot Competition.
 
 ## Prerequisites
 
