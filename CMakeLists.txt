@@ -56,6 +56,7 @@ add_message_files(
   HumanNaviObjectInfo.msg
   HumanNaviTaskInfo.msg
   HumanNaviMsg.msg
+  HumanNaviGuidanceMsg.msg
   HumanNaviAvatarPose.msg
 )
 

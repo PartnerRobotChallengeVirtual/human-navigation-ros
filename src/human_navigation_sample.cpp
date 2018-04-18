@@ -3,6 +3,7 @@
 #include <human_navigation/HumanNaviObjectInfo.h>
 #include <human_navigation/HumanNaviTaskInfo.h>
 #include <human_navigation/HumanNaviMsg.h>
+#include <human_navigation/HumanNaviGuidanceMsg.h>
 #include <human_navigation/HumanNaviAvatarPose.h>
 
 class HumanNavigationSample
@@ -19,7 +20,7 @@ private:
 		TaskFinished
 	};
 
-	enum SpeechState
+	enum class SpeechState
 	{
 		None,
 		WaitingState,
@@ -27,6 +28,7 @@ private:
 		Speakable
 	};
 
+	// human navigation message from/to the moderator
 	const std::string MSG_ARE_YOU_READY    = "Are_you_ready?";
 	const std::string MSG_TASK_SUCCEEDED   = "Task_succeeded";
 	const std::string MSG_TASK_FAILED      = "Task_failed";
@@ -41,8 +43,14 @@ private:
 	const std::string MSG_GET_OBJECT_POSITIONS = "Get_object_positions";
 	const std::string MSG_CONFIRM_SPEECH_STATE = "Confirm_speech_state";
 
+	// display type of guidance message panels for the avatar (test subject)
+	const std::string DISPLAY_TYPE_ALL         = "All";
+	const std::string DISPLAY_TYPE_ROBOT_ONLY  = "RobotOnly";
+	const std::string DISPLAY_TYPE_AVATAR_ONLY = "AvatarOnly";
+	const std::string DISPLAY_TYPE_NONE        = "None";
+
 	int step;
-	int speechState;
+	SpeechState speechState;
 
 	bool isStarted;
 	bool isFinished;
@@ -62,7 +70,7 @@ private:
 	void init()
 	{
 		step = Initialize;
-		speechState = None;
+		speechState = SpeechState::None;
 
 		reset();
 	}
@@ -86,15 +94,18 @@ private:
 		ROS_INFO("Send message:%s", message.c_str());
 	}
 
-	// send guide message to the virtual robot (Unity)
-	void sendStringMessage(ros::Publisher &publisher, const std::string &message)
+	void sendGuidanceMessage(ros::Publisher &publisher, const std::string &message, const std::string displayType)
 	{
-		std_msgs::String stringMsg;
-		stringMsg.data = message;
-		publisher.publish(stringMsg);
+		human_navigation::HumanNaviGuidanceMsg guidanceMessage;
+		guidanceMessage.message = message;
+		guidanceMessage.display_type = displayType;
+		publisher.publish(guidanceMessage);
 
-		ROS_INFO("Send guide message: %s", message.c_str());
+		speechState = SpeechState::Speaking;
+
+		ROS_INFO("Send guide message: %s : %s", guidanceMessage.message.c_str(), guidanceMessage.display_type.c_str());
 	}
+
 
 	// receive humanNaviMsg from the moderator (Unity)
 	void messageCallback(const human_navigation::HumanNaviMsg::ConstPtr& message)
@@ -135,11 +146,11 @@ private:
 		{
 			if(message->detail=="Is_speaking")
 			{
-				speechState = Speaking;
+				speechState = SpeechState::Speaking;
 			}
 			else
 			{
-				speechState = Speakable;
+				speechState = SpeechState::Speakable;
 			}
 		}
 	}
@@ -179,21 +190,21 @@ private:
 		isSentGetAvatarPose = false;
 	}
 
-	bool speakGuidanceMessage(ros::Publisher pubHumanNaviMsg, ros::Publisher pubStringMsg, std::string message, int interval = 1)
+	bool speakGuidanceMessage(ros::Publisher pubHumanNaviMsg, ros::Publisher pubGuidanceMsg, std::string message, int interval = 1)
 	{
-		if(speechState == Speakable)
+		if(speechState == SpeechState::Speakable)
 		{
-			sendStringMessage(pubStringMsg, message);
-			speechState = None;
+			sendGuidanceMessage(pubGuidanceMsg, message, DISPLAY_TYPE_ROBOT_ONLY);
+			speechState = SpeechState::None;
 			return true;
 		}
-		else if(speechState == None || speechState == Speaking)
+		else if(speechState == SpeechState::None || speechState == SpeechState::Speaking)
 		{
 			if(timePrevSpeechStateConfirmed.sec + interval < ros::Time::now().sec)
 			{
 				sendMessage(pubHumanNaviMsg, MSG_CONFIRM_SPEECH_STATE);
 				timePrevSpeechStateConfirmed = ros::Time::now();
-				speechState = WaitingState;
+				speechState = SpeechState::WaitingState;
 			}
 		}
 
@@ -217,7 +228,7 @@ public:
 		ros::Subscriber subTaskInfoMsg = nodeHandle.subscribe<human_navigation::HumanNaviTaskInfo>("/human_navigation/message/task_info", 1, &HumanNavigationSample::taskInfoMessageCallback, this);
 		ros::Subscriber subAvatarPoseMsg = nodeHandle.subscribe<human_navigation::HumanNaviAvatarPose>("/human_navigation/message/avatar_pose", 1, &HumanNavigationSample::avatarPoseMessageCallback, this);
 		ros::Publisher pubHumanNaviMsg = nodeHandle.advertise<human_navigation::HumanNaviMsg>("/human_navigation/message/to_moderator", 10);
-		ros::Publisher pubStringMsg  = nodeHandle.advertise<std_msgs::String>("/human_navigation/message/guidance_message", 10);
+		ros::Publisher pubGuidanceMsg  = nodeHandle.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
 		ros::Time time;
 
@@ -280,7 +291,7 @@ public:
 
 					guideMsg = "Please take " + targetObjectName + locationName;
 
-					if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+					if(speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, guideMsg))
 					{
 						time = ros::Time::now();
 						step++;
@@ -291,7 +302,7 @@ public:
 				{
 					if(isRequestReceived)
 					{
-						if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+						if(speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, guideMsg))
 						{
 							isRequestReceived = false;
 						}
@@ -311,7 +322,7 @@ public:
 						}
 						guideMsg = "Put it in " + destinationName;
 
-						if(speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg))
+						if(speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, guideMsg))
 						{
 							time = ros::Time::now();
 							step++;
@@ -334,11 +345,11 @@ public:
 						bool isSpeaked;
 						if(ros::Time::now().sec % 2 > 0)
 						{
-							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, guideMsg);
+							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, guideMsg);
 						}
 						else
 						{
-							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubStringMsg, "You can find the cabinet above the kitchen sink.");
+							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, "You can find the cabinet above the kitchen sink.");
 						}
 
 						if(isSpeaked)
