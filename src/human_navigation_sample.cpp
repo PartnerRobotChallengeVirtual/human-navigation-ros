@@ -1,5 +1,4 @@
 #include <ros/ros.h>
-#include <std_msgs/String.h>
 #include <human_navigation/HumanNaviObjectInfo.h>
 #include <human_navigation/HumanNaviTaskInfo.h>
 #include <human_navigation/HumanNaviMsg.h>
@@ -194,7 +193,7 @@ private:
 	{
 		if(speechState == SpeechState::Speakable)
 		{
-			sendGuidanceMessage(pubGuidanceMsg, message, DISPLAY_TYPE_ROBOT_ONLY);
+			sendGuidanceMessage(pubGuidanceMsg, message, DISPLAY_TYPE_ALL);
 			speechState = SpeechState::None;
 			return true;
 		}
@@ -280,7 +279,7 @@ public:
 					}
 
 					std::string locationName;
-					if(taskInfo.target_object.position.z > 0.0)
+					if(taskInfo.target_object.position.x > 0.0)
 					{
 						locationName = "on a table.";
 					}
@@ -312,7 +311,7 @@ public:
 					if(time.sec + WaitTime < ros::Time::now().sec)
 					{
 						std::string destinationName;
-						if(taskInfo.destination.y < 1.0)
+						if(taskInfo.destination.z < 1.0)
 						{
 							destinationName = "a trash box on the left.";
 						}
