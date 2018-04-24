@@ -269,7 +269,7 @@ public:
 					}
 
 					std::string targetObjectName;
-					if(taskInfo.target_object.name.find("petbottle_500ml_empty") != std::string::npos)
+					if(taskInfo.target_object.name.find("small_empty_plastic_bottle") != std::string::npos)
 					{
 						targetObjectName = "an empty plastic bottle ";
 					}
@@ -313,7 +313,7 @@ public:
 						std::string destinationName;
 						if(taskInfo.destination.z < 1.0)
 						{
-							destinationName = "a trash box on the left.";
+							destinationName = "a trash can on the left.";
 						}
 						else
 						{
@@ -348,7 +348,7 @@ public:
 						}
 						else
 						{
-							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, "You can find the cabinet above the kitchen sink.");
+							isSpeaked = speakGuidanceMessage(pubHumanNaviMsg, pubGuidanceMsg, "You can find the wall cabinet above the kitchen sink.");
 						}
 
 						if(isSpeaked)
