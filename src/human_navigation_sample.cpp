@@ -269,7 +269,7 @@ public:
 					}
 
 					std::string targetObjectName;
-					if(taskInfo.target_object.name.find("petbottle_500ml_empty_01") != std::string::npos)
+					if(taskInfo.target_object.name.find("petbottle_500ml_empty") != std::string::npos)
 					{
 						targetObjectName = "an empty plastic bottle ";
 					}
