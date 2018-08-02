@@ -28,14 +28,14 @@ private:
 	};
 
 	// human navigation message from/to the moderator
-	const std::string MSG_ARE_YOU_READY    = "Are_you_ready?";
-	const std::string MSG_TASK_SUCCEEDED   = "Task_succeeded";
-	const std::string MSG_TASK_FAILED      = "Task_failed";
-	const std::string MSG_TASK_FINISHED    = "Task_finished";
-	const std::string MSG_GO_TO_NEXT_TRIAL = "Go_to_next_trial";
-	const std::string MSG_MISSION_COMPLETE = "Mission_complete";
-	const std::string MSG_REQUEST          = "Guidance_request";
-	const std::string MSG_SPEECH_STATE     = "Speech_state";
+	const std::string MSG_ARE_YOU_READY      = "Are_you_ready?";
+	const std::string MSG_TASK_SUCCEEDED     = "Task_succeeded";
+	const std::string MSG_TASK_FAILED        = "Task_failed";
+	const std::string MSG_TASK_FINISHED      = "Task_finished";
+	const std::string MSG_GO_TO_NEXT_SESSION = "Go_to_next_session";
+	const std::string MSG_MISSION_COMPLETE   = "Mission_complete";
+	const std::string MSG_REQUEST            = "Guidance_request";
+	const std::string MSG_SPEECH_STATE       = "Speech_state";
 
 	const std::string MSG_I_AM_READY           = "I_am_ready";
 	const std::string MSG_GET_AVATAR_POSE      = "Get_avatar_pose";
@@ -132,9 +132,9 @@ private:
 		{
 			isFinished = true;
 		}
-		else if(message->message==MSG_GO_TO_NEXT_TRIAL)
+		else if(message->message==MSG_GO_TO_NEXT_SESSION)
 		{
-			ROS_INFO("Go to next trial");
+			ROS_INFO("Go to next session");
 			step = Initialize;
 		}
 		else if(message->message==MSG_MISSION_COMPLETE)
@@ -166,13 +166,13 @@ private:
 			"Destination: " << std::endl << taskInfo.destination
 		);
 
-		/*int objectNum = taskInfo.objects_info.size();
+		int objectNum = taskInfo.objects_info.size();
 		std::cout << "Number of other objects: " << objectNum << std::endl;
 		std::cout << "Other objects:" << std::endl;
 		for(int i=0; i<objectNum; i++)
 		{
 			std::cout << taskInfo.objects_info[i] << std::endl;
-		}*/
+		}
 
 		isTaskInfoReceived = true;
 	}
@@ -370,7 +370,7 @@ public:
 				}
 				case TaskFinished:
 				{
-					// Wait MSG_GO_TO_NEXT_TRIAL or MSG_MISSION_COMPLETE
+					// Wait MSG_GO_TO_NEXT_SESSION or MSG_MISSION_COMPLETE
 					break;
 				}
 			}
