@@ -1,0 +1,8 @@
+geometry_msgs/Pose head
+geometry_msgs/Pose body
+geometry_msgs/Pose left_hand
+geometry_msgs/Pose right_hand
+string object_in_left_hand
+string object_in_right_hand
+bool is_target_object_in_left_hand
+bool is_target_object_in_right_hand

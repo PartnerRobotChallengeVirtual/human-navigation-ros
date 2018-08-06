@@ -3,7 +3,7 @@
 #include <human_navigation/HumanNaviTaskInfo.h>
 #include <human_navigation/HumanNaviMsg.h>
 #include <human_navigation/HumanNaviGuidanceMsg.h>
-#include <human_navigation/HumanNaviAvatarPose.h>
+#include <human_navigation/HumanNaviAvatarStatus.h>
 
 class HumanNavigationSample
 {
@@ -38,7 +38,7 @@ private:
 	const std::string MSG_SPEECH_STATE       = "Speech_state";
 
 	const std::string MSG_I_AM_READY           = "I_am_ready";
-	const std::string MSG_GET_AVATAR_POSE      = "Get_avatar_pose";
+	const std::string MSG_GET_AVATAR_STATUS    = "Get_avatar_status";
 	const std::string MSG_GET_OBJECT_POSITIONS = "Get_object_positions";
 	const std::string MSG_CONFIRM_SPEECH_STATE = "Confirm_speech_state";
 
@@ -59,12 +59,12 @@ private:
 
 	ros::Time timePrevSpeechStateConfirmed;
 
-	bool isSentGetAvatarPose;
+	bool isSentGetAvatarStatus;
 
 	human_navigation::HumanNaviTaskInfo taskInfo;
 	std::string guideMsg;
 
-	human_navigation::HumanNaviAvatarPose avatarPose;
+	human_navigation::HumanNaviAvatarStatus avatarStatus;
 
 	void init()
 	{
@@ -76,11 +76,11 @@ private:
 
 	void reset()
 	{
-		isStarted           = false;
-		isFinished          = false;
-		isTaskInfoReceived  = false;
-		isRequestReceived   = false;
-		isSentGetAvatarPose = false;
+		isStarted             = false;
+		isFinished            = false;
+		isTaskInfoReceived    = false;
+		isRequestReceived     = false;
+		isSentGetAvatarStatus = false;
 	}
 
 	// send humanNaviMsg to the moderator (Unity)
@@ -177,16 +177,21 @@ private:
 		isTaskInfoReceived = true;
 	}
 
-	void avatarPoseMessageCallback(const human_navigation::HumanNaviAvatarPose::ConstPtr& message)
+	void avatarStatusMessageCallback(const human_navigation::HumanNaviAvatarStatus::ConstPtr& message)
 	{
-		avatarPose = *message;
+		avatarStatus = *message;
 
 		ROS_INFO_STREAM(
-			"Head: " << std::endl << avatarPose.head << 
-			"LeftHand: " << std::endl << avatarPose.left_hand << 
-			"rightHand: " << std::endl << avatarPose.right_hand
+			std::endl <<
+			"Head: " << std::endl << avatarStatus.head << 
+			"LeftHand: " << std::endl << avatarStatus.left_hand << 
+			"rightHand: " << std::endl << avatarStatus.right_hand <<
+			"objctInLeftHand: " << avatarStatus.object_in_left_hand << std::endl <<
+			"objectInRightHand: " << avatarStatus.object_in_right_hand << std::endl <<
+			"isTargetObjectInLeftHand: " << std::boolalpha << (bool)avatarStatus.is_target_object_in_left_hand << std::endl <<
+			"isTargetObjectInRightHand: " << std::boolalpha << (bool)avatarStatus.is_target_object_in_right_hand << std::endl
 		);
-		isSentGetAvatarPose = false;
+		isSentGetAvatarStatus = false;
 	}
 
 	bool speakGuidanceMessage(ros::Publisher pubHumanNaviMsg, ros::Publisher pubGuidanceMsg, std::string message, int interval = 1)
@@ -225,7 +230,7 @@ public:
 
 		ros::Subscriber subHumanNaviMsg = nodeHandle.subscribe<human_navigation::HumanNaviMsg>("/human_navigation/message/to_robot", 100, &HumanNavigationSample::messageCallback, this);
 		ros::Subscriber subTaskInfoMsg = nodeHandle.subscribe<human_navigation::HumanNaviTaskInfo>("/human_navigation/message/task_info", 1, &HumanNavigationSample::taskInfoMessageCallback, this);
-		ros::Subscriber subAvatarPoseMsg = nodeHandle.subscribe<human_navigation::HumanNaviAvatarPose>("/human_navigation/message/avatar_pose", 1, &HumanNavigationSample::avatarPoseMessageCallback, this);
+		ros::Subscriber subAvatarStatusMsg = nodeHandle.subscribe<human_navigation::HumanNaviAvatarStatus>("/human_navigation/message/avatar_status", 1, &HumanNavigationSample::avatarStatusMessageCallback, this);
 		ros::Publisher pubHumanNaviMsg = nodeHandle.advertise<human_navigation::HumanNaviMsg>("/human_navigation/message/to_moderator", 10);
 		ros::Publisher pubGuidanceMsg  = nodeHandle.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
@@ -358,12 +363,12 @@ public:
 					}
 
 					int WaitTime = 10;
-					if(time.sec + WaitTime < ros::Time::now().sec && !isSentGetAvatarPose)
+					if(time.sec + WaitTime < ros::Time::now().sec && !isSentGetAvatarStatus)
 					{
-						sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_POSE);
+						sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_STATUS);
 
 						time = ros::Time::now();
-						isSentGetAvatarPose = true;
+						isSentGetAvatarStatus = true;
 					}
 
 					break;
