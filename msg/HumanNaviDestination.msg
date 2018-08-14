@@ -1,3 +1,3 @@
-string name
 geometry_msgs/Point position
 geometry_msgs/Quaternion orientation
+geometry_msgs/Point size

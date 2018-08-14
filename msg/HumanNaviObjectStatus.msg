@@ -1,0 +1,2 @@
+HumanNaviObjectInfo target_object
+HumanNaviObjectInfo[] non_target_objects

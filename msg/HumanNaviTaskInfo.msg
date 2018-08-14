@@ -1,4 +1,5 @@
 string environment_id
-HumanNaviObjectInfo[] objects_info
 HumanNaviObjectInfo target_object
-geometry_msgs/Point destination
+HumanNaviDestination destination
+HumanNaviObjectInfo[] non_target_objects
+HumanNaviObjectInfo[] furniture

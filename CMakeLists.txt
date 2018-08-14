@@ -54,10 +54,12 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   HumanNaviObjectInfo.msg
+  HumanNaviDestination.msg
   HumanNaviTaskInfo.msg
   HumanNaviMsg.msg
   HumanNaviGuidanceMsg.msg
   HumanNaviAvatarStatus.msg
+  HumanNaviObjectStatus.msg
 )
 
 ## Generate services in the 'srv' folder

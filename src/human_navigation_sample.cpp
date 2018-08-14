@@ -1,9 +1,11 @@
 #include <ros/ros.h>
 #include <human_navigation/HumanNaviObjectInfo.h>
+#include <human_navigation/HumanNaviDestination.h>
 #include <human_navigation/HumanNaviTaskInfo.h>
 #include <human_navigation/HumanNaviMsg.h>
 #include <human_navigation/HumanNaviGuidanceMsg.h>
 #include <human_navigation/HumanNaviAvatarStatus.h>
+#include <human_navigation/HumanNaviObjectStatus.h>
 
 class HumanNavigationSample
 {
@@ -39,7 +41,7 @@ private:
 
 	const std::string MSG_I_AM_READY           = "I_am_ready";
 	const std::string MSG_GET_AVATAR_STATUS    = "Get_avatar_status";
-	const std::string MSG_GET_OBJECT_POSITIONS = "Get_object_positions";
+	const std::string MSG_GET_OBJECT_STATUS    = "Get_object_status";
 	const std::string MSG_CONFIRM_SPEECH_STATE = "Confirm_speech_state";
 
 	// display type of guidance message panels for the avatar (test subject)
@@ -60,11 +62,13 @@ private:
 	ros::Time timePrevSpeechStateConfirmed;
 
 	bool isSentGetAvatarStatus;
+	bool isSentGetObjectStatus;
 
 	human_navigation::HumanNaviTaskInfo taskInfo;
 	std::string guideMsg;
 
 	human_navigation::HumanNaviAvatarStatus avatarStatus;
+	human_navigation::HumanNaviObjectStatus objectStatus;
 
 	void init()
 	{
@@ -81,6 +85,7 @@ private:
 		isTaskInfoReceived    = false;
 		isRequestReceived     = false;
 		isSentGetAvatarStatus = false;
+		isSentGetObjectStatus = false;
 	}
 
 	// send humanNaviMsg to the moderator (Unity)
@@ -139,7 +144,7 @@ private:
 		}
 		else if(message->message==MSG_MISSION_COMPLETE)
 		{
-			exit(EXIT_SUCCESS);
+			//exit(EXIT_SUCCESS);
 		}
 		else if(message->message==MSG_SPEECH_STATE)
 		{
@@ -166,12 +171,20 @@ private:
 			"Destination: " << std::endl << taskInfo.destination
 		);
 
-		int objectNum = taskInfo.objects_info.size();
-		std::cout << "Number of other objects: " << objectNum << std::endl;
-		std::cout << "Other objects:" << std::endl;
-		for(int i=0; i<objectNum; i++)
+		int numOfNonTargetObjects = taskInfo.non_target_objects.size();
+		std::cout << "Number of non-target objects: " << numOfNonTargetObjects << std::endl;
+		std::cout << "Non-target objects:" << std::endl;
+		for(int i=0; i<numOfNonTargetObjects; i++)
 		{
-			std::cout << taskInfo.objects_info[i] << std::endl;
+			std::cout << taskInfo.non_target_objects[i] << std::endl;
+		}
+
+		int numOfFurniture = taskInfo.furniture.size();
+		std::cout << "Number of furniture: " << numOfFurniture << std::endl;
+		std::cout << "Furniture objects:" << std::endl;
+		for(int i=0; i<numOfFurniture; i++)
+		{
+			std::cout << taskInfo.furniture[i] << std::endl;
 		}
 
 		isTaskInfoReceived = true;
@@ -182,7 +195,7 @@ private:
 		avatarStatus = *message;
 
 		ROS_INFO_STREAM(
-			std::endl <<
+			"Subscribe avatar status message:" << std::endl <<
 			"Head: " << std::endl << avatarStatus.head << 
 			"LeftHand: " << std::endl << avatarStatus.left_hand << 
 			"rightHand: " << std::endl << avatarStatus.right_hand <<
@@ -192,6 +205,26 @@ private:
 			"isTargetObjectInRightHand: " << std::boolalpha << (bool)avatarStatus.is_target_object_in_right_hand << std::endl
 		);
 		isSentGetAvatarStatus = false;
+	}
+
+	void objectStatusMessageCallback(const human_navigation::HumanNaviObjectStatus::ConstPtr& message)
+	{
+		objectStatus = *message;
+
+		ROS_INFO_STREAM(
+			"Subscribe object status message:" << std::endl <<
+			"Target object: " << std::endl << taskInfo.target_object
+		);
+
+		int numOfNonTargetObjects = taskInfo.non_target_objects.size();
+		std::cout << "Number of non-target objects: " << numOfNonTargetObjects << std::endl;
+		std::cout << "Non-target objects:" << std::endl;
+		for(int i=0; i<numOfNonTargetObjects; i++)
+		{
+			std::cout << taskInfo.non_target_objects[i] << std::endl;
+		}
+
+		isSentGetObjectStatus = false;
 	}
 
 	bool speakGuidanceMessage(ros::Publisher pubHumanNaviMsg, ros::Publisher pubGuidanceMsg, std::string message, int interval = 1)
@@ -231,6 +264,7 @@ public:
 		ros::Subscriber subHumanNaviMsg = nodeHandle.subscribe<human_navigation::HumanNaviMsg>("/human_navigation/message/to_robot", 100, &HumanNavigationSample::messageCallback, this);
 		ros::Subscriber subTaskInfoMsg = nodeHandle.subscribe<human_navigation::HumanNaviTaskInfo>("/human_navigation/message/task_info", 1, &HumanNavigationSample::taskInfoMessageCallback, this);
 		ros::Subscriber subAvatarStatusMsg = nodeHandle.subscribe<human_navigation::HumanNaviAvatarStatus>("/human_navigation/message/avatar_status", 1, &HumanNavigationSample::avatarStatusMessageCallback, this);
+		ros::Subscriber subObjectStatusMsg = nodeHandle.subscribe<human_navigation::HumanNaviObjectStatus>("/human_navigation/message/object_status", 1, &HumanNavigationSample::objectStatusMessageCallback, this);
 		ros::Publisher pubHumanNaviMsg = nodeHandle.advertise<human_navigation::HumanNaviMsg>("/human_navigation/message/to_moderator", 10);
 		ros::Publisher pubGuidanceMsg  = nodeHandle.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
@@ -316,7 +350,7 @@ public:
 					if(time.sec + WaitTime < ros::Time::now().sec)
 					{
 						std::string destinationName;
-						if(taskInfo.destination.z < 1.0)
+						if(taskInfo.destination.position.z < 1.0)
 						{
 							destinationName = "a trash can on the left.";
 						}
@@ -362,13 +396,17 @@ public:
 						}
 					}
 
-					int WaitTime = 10;
-					if(time.sec + WaitTime < ros::Time::now().sec && !isSentGetAvatarStatus)
+					int WaitTime = 5;
+					if(time.sec + WaitTime < ros::Time::now().sec)
 					{
-						sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_STATUS);
-
-						time = ros::Time::now();
-						isSentGetAvatarStatus = true;
+						if(!isSentGetAvatarStatus && !isSentGetObjectStatus)
+						{
+							sendMessage(pubHumanNaviMsg, MSG_GET_AVATAR_STATUS);
+							sendMessage(pubHumanNaviMsg, MSG_GET_OBJECT_STATUS);
+							isSentGetAvatarStatus = true;
+							isSentGetObjectStatus = true;
+							time = ros::Time::now();
+						}
 					}
 
 					break;
