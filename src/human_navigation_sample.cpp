@@ -38,11 +38,12 @@ private:
 	const std::string MSG_MISSION_COMPLETE   = "Mission_complete";
 	const std::string MSG_REQUEST            = "Guidance_request";
 	const std::string MSG_SPEECH_STATE       = "Speech_state";
+	const std::string MSG_SPEECH_RESULT      = "Speech_result";
 
-	const std::string MSG_I_AM_READY           = "I_am_ready";
-	const std::string MSG_GET_AVATAR_STATUS    = "Get_avatar_status";
-	const std::string MSG_GET_OBJECT_STATUS    = "Get_object_status";
-	const std::string MSG_CONFIRM_SPEECH_STATE = "Confirm_speech_state";
+	const std::string MSG_I_AM_READY        = "I_am_ready";
+	const std::string MSG_GET_AVATAR_STATUS = "Get_avatar_status";
+	const std::string MSG_GET_OBJECT_STATUS = "Get_object_status";
+	const std::string MSG_GET_SPEECH_STATE  = "Get_speech_state";
 
 	// display type of guidance message panels for the avatar (test subject)
 	const std::string DISPLAY_TYPE_ALL         = "All";
@@ -157,6 +158,10 @@ private:
 				speechState = SpeechState::Speakable;
 			}
 		}
+		else if(message->message==MSG_SPEECH_RESULT)
+		{
+			ROS_INFO("Speech result: %s", message->detail.c_str());
+		}
 	}
 
 	// receive taskInfo from the moderator (Unity)
@@ -239,7 +244,7 @@ private:
 		{
 			if(timePrevSpeechStateConfirmed.sec + interval < ros::Time::now().sec)
 			{
-				sendMessage(pubHumanNaviMsg, MSG_CONFIRM_SPEECH_STATE);
+				sendMessage(pubHumanNaviMsg, MSG_GET_SPEECH_STATE);
 				timePrevSpeechStateConfirmed = ros::Time::now();
 				speechState = SpeechState::WaitingState;
 			}
