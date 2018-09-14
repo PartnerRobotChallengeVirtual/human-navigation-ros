@@ -6,7 +6,9 @@
 #include <sensor_msgs/JointState.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
+
 #include <human_navigation/HumanNaviMsg.h>
+#include <human_navigation/HumanNaviGuidanceMsg.h>
 
 class HSRKeyTeleop
 {
@@ -37,6 +39,7 @@ private:
   static const char KEYCODE_O = 0x6f;
   static const char KEYCODE_Q = 0x71;
   static const char KEYCODE_S = 0x73;
+  static const char KEYCODE_T = 0x74;
   static const char KEYCODE_U = 0x75;
   static const char KEYCODE_Y = 0x79;
   static const char KEYCODE_Z = 0x7a;
@@ -62,6 +65,7 @@ public:
   void moveBase(ros::Publisher &publisher, double linear_x, double linear_y, double angular_z);
   void moveArm(ros::Publisher &publisher, const std::string &name, const double position, const int duration_sec);
   void moveHand(ros::Publisher &publisher, bool grasp);
+  void sendGuidanceMessage(ros::Publisher &publisher, const std::string &message, const std::string displayType);
 
   void showHelp();
   int run(int argc, char **argv);
@@ -195,6 +199,16 @@ void HSRKeyTeleop::moveHand(ros::Publisher &publisher, bool is_hand_open)
 }
 
 
+void HSRKeyTeleop::sendGuidanceMessage(ros::Publisher &publisher, const std::string &message, const std::string displayType)
+{
+  human_navigation::HumanNaviGuidanceMsg guidanceMessage;
+  guidanceMessage.message = message;
+  guidanceMessage.display_type = displayType;
+  publisher.publish(guidanceMessage);
+
+  ROS_INFO("Send guide message: %s : %s", guidanceMessage.message.c_str(), guidanceMessage.display_type.c_str());
+}
+
 void HSRKeyTeleop::showHelp()
 {
   puts("Operate by Keyboard");
@@ -219,6 +233,7 @@ void HSRKeyTeleop::showHelp()
   puts("d : Rotate Arm - Downward");
   puts("---------------------------");
   puts("g : Grasp/Open Hand");
+  puts("t : Send Test Message");
   puts("---------------------------");
   //puts(("0 : Send "+MSG_I_AM_READY).c_str());
   puts(("9 : Send "+MSG_GIVE_UP).c_str());
@@ -273,6 +288,7 @@ int HSRKeyTeleop::run(int argc, char **argv)
   ros::Publisher  pub_base_twist         = node_handle.advertise<geometry_msgs::Twist>            (pub_base_twist_topic_name, 10);
   ros::Publisher  pub_arm_trajectory     = node_handle.advertise<trajectory_msgs::JointTrajectory>(pub_arm_trajectory_topic_name, 10);
   ros::Publisher  pub_gripper_trajectory = node_handle.advertise<trajectory_msgs::JointTrajectory>(pub_gripper_trajectory_topic_name, 10);
+  ros::Publisher  pub_guidance_msg       = node_handle.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
 
   const float linear_coef         = 0.2f;
@@ -458,6 +474,11 @@ int HSRKeyTeleop::run(int argc, char **argv)
           moveHand(pub_gripper_trajectory, is_hand_open);
 
           is_hand_open = !is_hand_open;
+          break;
+        }
+        case KEYCODE_T:
+        {
+          sendGuidanceMessage(pub_guidance_msg, "This is a test message.", "All");
           break;
         }
       }
