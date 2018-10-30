@@ -284,7 +284,7 @@ Visualization Manager:
     - Class: rviz/Camera
       Enabled: true
       Image Rendering: background and overlay
-      Image Topic: /hsrb/head_rgbd_sensor/depth/image_raw
+      Image Topic: /hsrb/head_rgbd_sensor/depth_registered/image_raw
       Name: Camera
       Overlay Alpha: 0.5
       Queue Size: 2
