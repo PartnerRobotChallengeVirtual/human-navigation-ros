@@ -3,6 +3,7 @@
 #include <termios.h>
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
+#include <tf/transform_listener.h>
 #include <sensor_msgs/JointState.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
@@ -13,10 +14,7 @@
 class HSRKeyTeleop
 {
 private:
-  static const char KEYCODE_0 = 0x30;
-  static const char KEYCODE_1 = 0x31;
-  static const char KEYCODE_2 = 0x32;
-  static const char KEYCODE_3 = 0x33;
+//  static const char KEYCODE_0 = 0x30;
   static const char KEYCODE_9 = 0x39;
 
   static const char KEYCODE_UP    = 0x41;
@@ -38,7 +36,6 @@ private:
   static const char KEYCODE_N = 0x6e;
   static const char KEYCODE_O = 0x6f;
   static const char KEYCODE_Q = 0x71;
-  static const char KEYCODE_S = 0x73;
   static const char KEYCODE_T = 0x74;
   static const char KEYCODE_U = 0x75;
   static const char KEYCODE_Y = 0x79;
@@ -46,6 +43,7 @@ private:
 
   static const char KEYCODE_COMMA  = 0x2c;
   static const char KEYCODE_PERIOD = 0x2e;
+  static const char KEYCODE_SPACE  = 0x20;
 
   const std::string ARM_LIFT_JOINT_NAME = "arm_lift_joint";
 
@@ -61,11 +59,13 @@ public:
   static int  canReceive(int fd);
 
   void jointStateCallback(const sensor_msgs::JointState::ConstPtr& joint_state);
-  void sendMessage(ros::Publisher &publisher, const std::string &message);
-  void moveBase(ros::Publisher &publisher, double linear_x, double linear_y, double angular_z);
-  void moveArm(ros::Publisher &publisher, const std::string &name, const double position, const int duration_sec);
-  void moveHand(ros::Publisher &publisher, bool grasp);
-  void sendGuidanceMessage(ros::Publisher &publisher, const std::string &message, const std::string displayType);
+  void sendMessage(const std::string &message);
+  void moveBaseTwist(double linear_x, double linear_y, double angular_z);
+  void moveBaseJointTrajectory(double linear_x, double linear_y, double theta, double duration_sec);
+  void operateArm(const double arm_lift_pos, const double arm_flex_pos, const double wrist_flex_pos, const int duration_sec);
+  void operateArm(const std::string &name, const double position, const int duration_sec);
+  void operateHand(bool grasp);
+  void sendGuidanceMessage(const std::string &message, const std::string displayType);
 
   void showHelp();
   int run(int argc, char **argv);
@@ -74,13 +74,29 @@ private:
   // Last position and previous position of arm_lift_joint
   double arm_lift_joint_pos1_;
   double arm_lift_joint_pos2_;
+  double arm_flex_joint_pos_;
+  double wrist_flex_joint_pos_;
+
+  ros::NodeHandle node_handle_;
+
+  ros::Publisher  pub_msg_;
+  ros::Subscriber sub_joint_state_;
+  ros::Publisher  pub_base_twist_;
+  ros::Publisher  pub_base_trajectory_;
+  ros::Publisher  pub_arm_trajectory_;
+  ros::Publisher  pub_gripper_trajectory_;
+  ros::Publisher  pub_guidance_msg_;
+
+  tf::TransformListener listener_;
 };
 
 
 HSRKeyTeleop::HSRKeyTeleop()
 {
-  arm_lift_joint_pos1_ = 0.0;
-  arm_lift_joint_pos2_ = 0.0;
+  arm_lift_joint_pos1_  = 0.0;
+  arm_lift_joint_pos2_  = 0.0;
+  arm_flex_joint_pos_   = 0.0;
+  wrist_flex_joint_pos_ = 0.0;
 }
 
 
@@ -108,103 +124,144 @@ void HSRKeyTeleop::jointStateCallback(const sensor_msgs::JointState::ConstPtr& j
 {
   for(int i=0; i<joint_state->name.size(); i++)
   {
-    if(joint_state->name[i]==ARM_LIFT_JOINT_NAME)
+    if(joint_state->name[i] == "arm_lift_joint")
     {
       arm_lift_joint_pos2_ = arm_lift_joint_pos1_;
       arm_lift_joint_pos1_ = joint_state->position[i];
-//      ROS_INFO("lift:%lf",armLiftJointPos_);
-      return;
+    }
+    if(joint_state->name[i] == "arm_flex_joint")
+    {
+      arm_flex_joint_pos_ = joint_state->position[i];
+    }
+    if(joint_state->name[i] == "wrist_flex_joint")
+    {
+      wrist_flex_joint_pos_ = joint_state->position[i];
     }
   }
 }
 
-void HSRKeyTeleop::sendMessage(ros::Publisher &publisher, const std::string &message)
+void HSRKeyTeleop::sendMessage(const std::string &message)
 {
   ROS_INFO("Send message:%s", message.c_str());
 
   human_navigation::HumanNaviMsg human_navi_msg;
   human_navi_msg.message = message;
-  publisher.publish(human_navi_msg);
+  pub_msg_.publish(human_navi_msg);
 }
 
-void HSRKeyTeleop::moveBase(ros::Publisher &publisher, double linear_x, double linear_y, double angular_z)
+void HSRKeyTeleop::moveBaseTwist(double linear_x, double linear_y, double angular_z)
 {
   geometry_msgs::Twist twist;
 
   twist.linear.x  = linear_x;
   twist.linear.y  = linear_y;
-  twist.linear.z  = 0.0;
-  twist.angular.x = 0.0;
-  twist.angular.y = 0.0;
   twist.angular.z = angular_z;
-
-  publisher.publish(twist);
+  pub_base_twist_.publish(twist);
 }
 
-void HSRKeyTeleop::moveArm(ros::Publisher &publisher, const std::string &name, const double position, const int duration_sec)
+void HSRKeyTeleop::moveBaseJointTrajectory(double linear_x, double linear_y, double theta, double duration_sec)
 {
-  std::vector<std::string> names;
-  names.push_back(name);
+  if(listener_.canTransform("/odom", "/base_footprint", ros::Time(0)) == false)
+  {
+    return;
+  }
 
-  std::vector<double> positions;
-  positions.push_back(position);
+  geometry_msgs::PointStamped basefootprint_2_target;
+  geometry_msgs::PointStamped odom_2_target;
+  basefootprint_2_target.header.frame_id = "/base_footprint";
+  basefootprint_2_target.header.stamp = ros::Time(0);
+  basefootprint_2_target.point.x = linear_x;
+  basefootprint_2_target.point.y = linear_y;
+  listener_.transformPoint("/odom", basefootprint_2_target, odom_2_target);
 
-  ros::Duration duration;
-  duration.sec = duration_sec;
+  tf::StampedTransform transform;
+  listener_.lookupTransform("/odom", "/base_footprint", ros::Time(0), transform);
+  tf::Quaternion currentRotation = transform.getRotation();
+  tf::Matrix3x3 mat(currentRotation);
+  double roll, pitch, yaw;
+  mat.getRPY(roll, pitch, yaw);
 
   trajectory_msgs::JointTrajectory joint_trajectory;
+  joint_trajectory.joint_names.push_back("odom_x");
+  joint_trajectory.joint_names.push_back("odom_y");
+  joint_trajectory.joint_names.push_back("odom_t");
+
+  trajectory_msgs::JointTrajectoryPoint omni_joint_point;
+  omni_joint_point.positions = {odom_2_target.point.x, odom_2_target.point.y, yaw + theta};
+  omni_joint_point.time_from_start = ros::Duration(duration_sec);
+
+  joint_trajectory.points.push_back(omni_joint_point);
+  pub_base_trajectory_.publish(joint_trajectory);
+}
+
+
+void HSRKeyTeleop::operateArm(const double arm_lift_pos, const double arm_flex_pos, const double wrist_flex_pos, const int duration_sec)
+{
+  trajectory_msgs::JointTrajectory joint_trajectory;
+  joint_trajectory.joint_names.push_back("arm_lift_joint");
+  joint_trajectory.joint_names.push_back("arm_flex_joint");
+  joint_trajectory.joint_names.push_back("arm_roll_joint");
+  joint_trajectory.joint_names.push_back("wrist_flex_joint");
+  joint_trajectory.joint_names.push_back("wrist_roll_joint");
 
   trajectory_msgs::JointTrajectoryPoint arm_joint_point;
 
+  arm_joint_point.positions = {arm_lift_pos, arm_flex_pos, 0.0f, wrist_flex_pos, 0.0f};
+
+  arm_joint_point.time_from_start = ros::Duration(duration_sec);
   joint_trajectory.points.push_back(arm_joint_point);
-
-  joint_trajectory.joint_names = names;
-  joint_trajectory.points[0].positions = positions;
-  joint_trajectory.points[0].time_from_start = duration;
-
-  publisher.publish(joint_trajectory);
+  pub_arm_trajectory_.publish(joint_trajectory);
 }
 
-void HSRKeyTeleop::moveHand(ros::Publisher &publisher, bool is_hand_open)
+void HSRKeyTeleop::operateArm(const std::string &name, const double position, const int duration_sec)
 {
-  std::vector<std::string> joint_names {"hand_l_proximal_joint", "hand_r_proximal_joint"};
+  if(name == "arm_lift_joint")
+  {
+    this->operateArm(position, arm_flex_joint_pos_, wrist_flex_joint_pos_, duration_sec);
+  }
+  else if(name == "arm_flex_joint")
+  {
+    this->operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, position, wrist_flex_joint_pos_, duration_sec);
+  }
+  else if(name == "wrist_flex_joint")
+  {
+    this->operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, arm_flex_joint_pos_, position, duration_sec);
+  }
+}
 
+void HSRKeyTeleop::operateHand(bool is_hand_open)
+{
+  std::vector<std::string> joint_names {"hand_motor_joint"};
   std::vector<double> positions;
 
   if(is_hand_open)
   {
     ROS_DEBUG("Grasp");
-    positions.push_back(0.0);
-    positions.push_back(0.0);
+    positions.push_back(-0.105);
   }
   else
   {
     ROS_DEBUG("Open hand");
-    positions.push_back(+0.611);
-    positions.push_back(-0.611);
+    positions.push_back(+1.239);
   }
-
-  ros::Duration duration;
-  duration.sec = 2;
 
   trajectory_msgs::JointTrajectoryPoint point;
   point.positions = positions;
-  point.time_from_start = duration;
+  point.time_from_start = ros::Duration(2);
 
   trajectory_msgs::JointTrajectory joint_trajectory;
   joint_trajectory.joint_names = joint_names;
   joint_trajectory.points.push_back(point);
-
-  publisher.publish(joint_trajectory);
+  pub_gripper_trajectory_.publish(joint_trajectory);
 }
 
 
-void HSRKeyTeleop::sendGuidanceMessage(ros::Publisher &publisher, const std::string &message, const std::string displayType)
+void HSRKeyTeleop::sendGuidanceMessage(const std::string &message, const std::string displayType)
 {
   human_navigation::HumanNaviGuidanceMsg guidanceMessage;
   guidanceMessage.message = message;
   guidanceMessage.display_type = displayType;
-  publisher.publish(guidanceMessage);
+  pub_guidance_msg_.publish(guidanceMessage);
 
   ROS_INFO("Send guide message: %s : %s", guidanceMessage.message.c_str(), guidanceMessage.display_type.c_str());
 }
@@ -214,18 +271,18 @@ void HSRKeyTeleop::showHelp()
   puts("Operate by Keyboard");
   puts("---------------------------");
   puts("arrow keys : Move HSR");
-  puts("s          : Stop HSR");
+  puts("space      : Stop HSR");
   puts("---------------------------");
-  puts("Move HSR Linearly:");
+  puts("Move HSR Linearly (1m)");
   puts("  u   i   o  ");
   puts("  j   k   l  ");
   puts("  m   ,   .  ");
   puts("---------------------------");
   puts("q/z : Increase/Decrease Moving Speed");
   puts("---------------------------");
-  puts("y : Move Arm Up");
-  puts("h : Stop Arm");
-  puts("n : Move Arm Down");
+  puts("y : Up   Torso");
+  puts("h : Stop Torso");
+  puts("n : Down Torso");
   puts("---------------------------");
   puts("a : Rotate Arm - Vertical");
   puts("b : Rotate Arm - Upward");
@@ -233,8 +290,8 @@ void HSRKeyTeleop::showHelp()
   puts("d : Rotate Arm - Downward");
   puts("---------------------------");
   puts("g : Grasp/Open Hand");
-  puts("t : Send Test Message");
   puts("---------------------------");
+  puts("t : Send Test Message");
   //puts(("0 : Send "+MSG_I_AM_READY).c_str());
   puts(("9 : Send "+MSG_GIVE_UP).c_str());
 }
@@ -259,10 +316,6 @@ int HSRKeyTeleop::run(int argc, char **argv)
 
   showHelp();
 
-  ros::init(argc, argv, "hsr_teleop_key");
-
-  ros::NodeHandle node_handle;
-
   // Override the default ros sigint handler.
   // This must be set after the first NodeHandle is created.
   signal(SIGINT, rosSigintHandler);
@@ -275,20 +328,20 @@ int HSRKeyTeleop::run(int argc, char **argv)
   std::string pub_arm_trajectory_topic_name;
   std::string pub_gripper_trajectory_topic_name;
 
-  node_handle.param<std::string>("pub_msg_to_moderator_topic_name",   pub_msg_to_moderator_topic_name,   "/human_navigation/message/to_moderator");
+  node_handle_.param<std::string>("pub_msg_to_moderator_topic_name",   pub_msg_to_moderator_topic_name,   "/human_navigation/message/to_moderator");
 
-  node_handle.param<std::string>("sub_joint_state_topic_name",        sub_joint_state_topic_name,        "/hsrb/joint_states");
-  node_handle.param<std::string>("pub_base_twist_topic_name",         pub_base_twist_topic_name,         "/hsrb/command_velocity");
-  node_handle.param<std::string>("pub_arm_trajectory_topic_name",     pub_arm_trajectory_topic_name,     "/hsrb/arm_trajectory_controller/command");
-  node_handle.param<std::string>("pub_gripper_trajectory_topic_name", pub_gripper_trajectory_topic_name, "/hsrb/gripper_trajectory_controller/command");
+  node_handle_.param<std::string>("sub_joint_state_topic_name",        sub_joint_state_topic_name,        "/hsrb/joint_states");
+  node_handle_.param<std::string>("pub_base_twist_topic_name",         pub_base_twist_topic_name,         "/hsrb/command_velocity");
+  node_handle_.param<std::string>("pub_arm_trajectory_topic_name",     pub_arm_trajectory_topic_name,     "/hsrb/arm_trajectory_controller/command");
+  node_handle_.param<std::string>("pub_gripper_trajectory_topic_name", pub_gripper_trajectory_topic_name, "/hsrb/gripper_trajectory_controller/command");
 
-  ros::Publisher  pub_msg                = node_handle.advertise<human_navigation::HumanNaviMsg>(pub_msg_to_moderator_topic_name, 10);
+  pub_msg_                = node_handle_.advertise<human_navigation::HumanNaviMsg>(pub_msg_to_moderator_topic_name, 10);
 
-  ros::Subscriber sub_joint_state        = node_handle.subscribe<sensor_msgs::JointState>(sub_joint_state_topic_name, 10, &HSRKeyTeleop::jointStateCallback, this);
-  ros::Publisher  pub_base_twist         = node_handle.advertise<geometry_msgs::Twist>            (pub_base_twist_topic_name, 10);
-  ros::Publisher  pub_arm_trajectory     = node_handle.advertise<trajectory_msgs::JointTrajectory>(pub_arm_trajectory_topic_name, 10);
-  ros::Publisher  pub_gripper_trajectory = node_handle.advertise<trajectory_msgs::JointTrajectory>(pub_gripper_trajectory_topic_name, 10);
-  ros::Publisher  pub_guidance_msg       = node_handle.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
+  sub_joint_state_        = node_handle_.subscribe<sensor_msgs::JointState>(sub_joint_state_topic_name, 10, &HSRKeyTeleop::jointStateCallback, this);
+  pub_base_twist_         = node_handle_.advertise<geometry_msgs::Twist>            (pub_base_twist_topic_name, 10);
+  pub_arm_trajectory_     = node_handle_.advertise<trajectory_msgs::JointTrajectory>(pub_arm_trajectory_topic_name, 10);
+  pub_gripper_trajectory_ = node_handle_.advertise<trajectory_msgs::JointTrajectory>(pub_gripper_trajectory_topic_name, 10);
+  ros::Publisher  pub_guidance_msg_       = node_handle_.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
 
   const float linear_coef         = 0.2f;
@@ -322,91 +375,91 @@ int HSRKeyTeleop::run(int argc, char **argv)
         //}
         case KEYCODE_9:
         {
-          sendMessage(pub_msg, MSG_GIVE_UP);
+          sendMessage(MSG_GIVE_UP);
           break;
         }
         case KEYCODE_UP:
         {
           ROS_DEBUG("Go Forward");
-          moveBase(pub_base_twist, +linear_coef*move_speed, 0.0, 0.0);
+          moveBaseTwist(+linear_coef*move_speed, 0.0, 0.0);
           break;
         }
         case KEYCODE_DOWN:
         {
           ROS_DEBUG("Go Backward");
-          moveBase(pub_base_twist, -linear_coef*move_speed, 0.0, 0.0);
+          moveBaseTwist(-linear_coef*move_speed, 0.0, 0.0);
           break;
         }
         case KEYCODE_RIGHT:
         {
           ROS_DEBUG("Go Right");
-          moveBase(pub_base_twist, 0.0, 0.0, -angular_coef*move_speed);
+          moveBaseTwist(0.0, 0.0, -angular_coef*move_speed);
           break;
         }
         case KEYCODE_LEFT:
         {
           ROS_DEBUG("Go Left");
-          moveBase(pub_base_twist, 0.0, 0.0, +angular_coef*move_speed);
+          moveBaseTwist(0.0, 0.0, +angular_coef*move_speed);
           break;
         }
-        case KEYCODE_S:
+        case KEYCODE_SPACE:
         {
           ROS_DEBUG("Stop");
-          moveBase(pub_base_twist, 0.0, 0.0, 0.0);
+          moveBaseTwist(0.0, 0.0, 0.0);
           break;
         }
         case KEYCODE_U:
         {
           ROS_DEBUG("Move Left Forward");
-          moveBase(pub_base_twist, +linear_oblique_coef*move_speed, +linear_oblique_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(+1.0, +1.0, +M_PI_4, 10);
           break;
         }
         case KEYCODE_I:
         {
           ROS_DEBUG("Move Forward");
-          moveBase(pub_base_twist, +linear_coef*move_speed, 0.0, 0.0);
+          moveBaseJointTrajectory(+1.0, 0.0, 0.0, 10);
           break;
         }
         case KEYCODE_O:
         {
           ROS_DEBUG("Move Right Forward");
-          moveBase(pub_base_twist, +linear_oblique_coef*move_speed, -linear_oblique_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(+1.0, -1.0, -M_PI_4, 10);
           break;
         }
         case KEYCODE_J:
         {
           ROS_DEBUG("Move Left");
-          moveBase(pub_base_twist, 0.0, +linear_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(0.0, +1.0, +M_PI_2, 10);
           break;
         }
         case KEYCODE_K:
         {
           ROS_DEBUG("Stop");
-          moveBase(pub_base_twist, 0.0, 0.0, 0.0);
+          moveBaseJointTrajectory(0.0, 0.0, 0.0, 0.5);
           break;
         }
         case KEYCODE_L:
         {
           ROS_DEBUG("Move Right");
-          moveBase(pub_base_twist, 0.0, -linear_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(0.0, -1.0, -M_PI_2, 10);
           break;
         }
         case KEYCODE_M:
         {
           ROS_DEBUG("Move Left Backward");
-          moveBase(pub_base_twist, -linear_oblique_coef*move_speed, +linear_oblique_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(-1.0, +1.0, +M_PI_2+M_PI_4, 10);
           break;
         }
         case KEYCODE_COMMA:
         {
           ROS_DEBUG("Move Backward");
-          moveBase(pub_base_twist, -linear_coef*move_speed, 0.0, 0.0);
+          moveBaseJointTrajectory(-1.0, 0.0, +M_PI, 10);
           break;
         }
         case KEYCODE_PERIOD:
         {
           ROS_DEBUG("Move Right Backward");
-          moveBase(pub_base_twist, -linear_oblique_coef*move_speed, -linear_oblique_coef*move_speed, 0.0);
+          moveBaseJointTrajectory(-1.0, -1.0, -M_PI_2-M_PI_4, 10);
           break;
         }
         case KEYCODE_Q:
@@ -425,60 +478,57 @@ int HSRKeyTeleop::run(int argc, char **argv)
         }
         case KEYCODE_Y:
         {
-          ROS_DEBUG("Move Arm Up");
-          moveArm(pub_arm_trajectory, arm_lift_joint_name, 0.69, std::max<int>((int)(std::abs(0.69 - arm_lift_joint_pos1_) / 0.05), 1));
+          ROS_DEBUG("Up Torso");
+          operateArm(arm_lift_joint_name, 0.69, std::max<int>((int)(std::abs(0.69 - arm_lift_joint_pos1_) / 0.05), 1));
           break;
         }
         case KEYCODE_H:
         {
-          ROS_DEBUG("Stop Arm");
-          moveArm(pub_arm_trajectory, arm_lift_joint_name, 2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, 0.5);
+          ROS_DEBUG("Stop Torso");
+          operateArm(arm_lift_joint_name, 2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, 0.5);
           break;
         }
         case KEYCODE_N:
         {
-          ROS_DEBUG("Move Arm Down");
-          moveArm(pub_arm_trajectory, arm_lift_joint_name, 0.0, std::max<int>((int)(std::abs(0.0 - arm_lift_joint_pos1_) / 0.05), 1));
+          ROS_DEBUG("Down Torso");
+          operateArm(arm_lift_joint_name, 0.0, std::max<int>((int)(std::abs(0.0 - arm_lift_joint_pos1_) / 0.05), 1));
           break;
         }
+        //operateArm(const double arm_lift_pos, const double arm_flex_pos, const double wrist_flex_pos, const int duration_sec);
         case KEYCODE_A:
         {
           ROS_DEBUG("Rotate Arm - Vertical");
-          moveArm(pub_arm_trajectory, arm_flex_joint_name, 0.0, 1);
-          moveArm(pub_arm_trajectory, wrist_flex_joint_name, -1.57, 1);
+          operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, 0.0, -1.57, 1);
           break;
         }
         case KEYCODE_B:
         {
           ROS_DEBUG("Rotate Arm - Upward");
-          moveArm(pub_arm_trajectory, arm_flex_joint_name, -0.785, 1);
-          moveArm(pub_arm_trajectory, wrist_flex_joint_name, -0.785, 1);
+          operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, -0.785, -0.785, 1);
           break;
         }
         case KEYCODE_C:
         {
           ROS_DEBUG("Rotate Arm - Horizontal");
-          moveArm(pub_arm_trajectory, arm_flex_joint_name, -1.57, 1);
-          moveArm(pub_arm_trajectory, wrist_flex_joint_name, 0.0, 1);
+          operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, -1.57, 0.0, 1);
           break;
         }
         case KEYCODE_D:
         {
           ROS_DEBUG("Rotate Arm - Downward");
-          moveArm(pub_arm_trajectory, arm_flex_joint_name, -2.2, 1);
-          moveArm(pub_arm_trajectory, wrist_flex_joint_name, 0.35, 1);
+          operateArm(2.0*arm_lift_joint_pos1_-arm_lift_joint_pos2_, -2.2, 0.35, 1);
           break;
         }
         case KEYCODE_G:
         {
-          moveHand(pub_gripper_trajectory, is_hand_open);
+          operateHand(is_hand_open);
 
           is_hand_open = !is_hand_open;
           break;
         }
         case KEYCODE_T:
         {
-          sendGuidanceMessage(pub_guidance_msg, "This is a test message.", "All");
+          sendGuidanceMessage("This is a test message.", "All");
           break;
         }
       }
@@ -500,6 +550,8 @@ int HSRKeyTeleop::run(int argc, char **argv)
 
 int main(int argc, char** argv)
 {
+  ros::init(argc, argv, "hsr_teleop_key");
+
   HSRKeyTeleop hsr_key_teleop;
   return hsr_key_teleop.run(argc, argv);
 }

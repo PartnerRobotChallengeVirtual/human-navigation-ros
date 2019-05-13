@@ -256,8 +256,6 @@ private:
 public:
 	int run(int argc, char **argv)
 	{
-		ros::init(argc, argv, "human_navi_sample");
-
 		ros::NodeHandle nodeHandle;
 
 		ros::Rate loopRate(10);
@@ -434,6 +432,8 @@ public:
 
 int main(int argc, char **argv)
 {
+	ros::init(argc, argv, "human_navi_sample");
+
 	HumanNavigationSample humanNaviSample;
 
 	humanNaviSample.run(argc, argv);
