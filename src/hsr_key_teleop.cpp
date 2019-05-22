@@ -339,6 +339,7 @@ int HSRKeyTeleop::run(int argc, char **argv)
   std::string pub_msg_to_moderator_topic_name;
   std::string sub_joint_state_topic_name;
   std::string pub_base_twist_topic_name;
+  std::string pub_base_trajectory_topic_name;
   std::string pub_arm_trajectory_topic_name;
   std::string pub_gripper_trajectory_topic_name;
 
@@ -346,16 +347,18 @@ int HSRKeyTeleop::run(int argc, char **argv)
 
   node_handle_.param<std::string>("sub_joint_state_topic_name",        sub_joint_state_topic_name,        "/hsrb/joint_states");
   node_handle_.param<std::string>("pub_base_twist_topic_name",         pub_base_twist_topic_name,         "/hsrb/command_velocity");
+  node_handle_.param<std::string>("pub_base_trajectory_topic_name",    pub_base_trajectory_topic_name,    "/hsrb/omni_base_controller/command");
   node_handle_.param<std::string>("pub_arm_trajectory_topic_name",     pub_arm_trajectory_topic_name,     "/hsrb/arm_trajectory_controller/command");
-  node_handle_.param<std::string>("pub_gripper_trajectory_topic_name", pub_gripper_trajectory_topic_name, "/hsrb/gripper_trajectory_controller/command");
+  node_handle_.param<std::string>("pub_gripper_trajectory_topic_name", pub_gripper_trajectory_topic_name, "/hsrb/gripper_controller/command");
 
   pub_msg_                = node_handle_.advertise<human_navigation::HumanNaviMsg>(pub_msg_to_moderator_topic_name, 10);
 
   sub_joint_state_        = node_handle_.subscribe<sensor_msgs::JointState>(sub_joint_state_topic_name, 10, &HSRKeyTeleop::jointStateCallback, this);
   pub_base_twist_         = node_handle_.advertise<geometry_msgs::Twist>            (pub_base_twist_topic_name, 10);
+  pub_base_trajectory_    = node_handle_.advertise<trajectory_msgs::JointTrajectory>(pub_base_trajectory_topic_name, 10);
   pub_arm_trajectory_     = node_handle_.advertise<trajectory_msgs::JointTrajectory>(pub_arm_trajectory_topic_name, 10);
   pub_gripper_trajectory_ = node_handle_.advertise<trajectory_msgs::JointTrajectory>(pub_gripper_trajectory_topic_name, 10);
-  ros::Publisher  pub_guidance_msg_       = node_handle_.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
+  pub_guidance_msg_       = node_handle_.advertise<human_navigation::HumanNaviGuidanceMsg>("/human_navigation/message/guidance_message", 10);
 
 
   const float linear_coef         = 0.2f;
