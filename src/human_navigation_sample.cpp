@@ -104,6 +104,8 @@ private:
 		human_navigation::HumanNaviGuidanceMsg guidanceMessage;
 		guidanceMessage.message = message;
 		guidanceMessage.display_type = displayType;
+		guidanceMessage.source_language = ""; // Blank or ISO-639-1 language code, e.g. "en".
+		guidanceMessage.target_language = ""; // Blank or ISO-639-1 language code, e.g. "ja".
 		publisher.publish(guidanceMessage);
 
 		speechState = SpeechState::Speaking;

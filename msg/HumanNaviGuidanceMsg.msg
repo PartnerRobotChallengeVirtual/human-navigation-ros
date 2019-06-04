@@ -1,2 +1,4 @@
 string message
 string display_type
+string source_language
+string target_language
